@@ -1,57 +1,45 @@
-// Code for working with DS3231 RTC(Real Time Clock)
+// Library for working with DS3231 RTC(Real Time Clock)
 #include <Wire.h>
 #include <RTClib.h>
 
-RTC_DS3231 rtc;
-
-/*
- * This ESP32 code is created by esp32io.com
- *
- * This ESP32 code is released in the public domain
- *
- * For more detail (instruction and wiring diagram), visit https://esp32io.com/tutorials/esp32-soil-moisture-sensor
- */
-
-#define SOIL_SENSOR_PIN 34 // ESP32 pin GPIO34 (ADC6) that connects to AOUT pin of moisture sensor
-
-// Граници (калибрирай за твоя сензор)
-#define DRY_VALUE 3000  // Стойност при суха почва
-#define WET_VALUE 1500  // Стойност при влажна почва
-#define MIN_SOIL_MOISTURE 20 // Под това поливай
-#define MAX_SOIL_MOISTURE 70 // Над това спри поливането
-
-// Example testing sketch for various DHT humidity/temperature sensors written by ladyada
+// Library for working with DHT humidity/temperature sensor
 // REQUIRES the following Arduino libraries:
 // - DHT Sensor Library: https://github.com/adafruit/DHT-sensor-library
 // - Adafruit Unified Sensor Lib: https://github.com/adafruit/Adafruit_Sensor
-
 #include <DHT.h>
 
-#define HEATER_RED_LED 18     // GPIO за червен диод
-#define COOLER_BLUE_LED 19    // GPIO за син диод
-#define VENTILATION_GREEN_LED 23  //GPIO за зелен диод
-#define PUMP_YELLOW_LED 15 //GPIO за жълт диод
-#define LIGHT_WHITE_LED 2  //GPIO за бял диод
+//Definitions for working with soil moisture sensor
+#define SOIL_SENSOR_PIN 34 // ESP32 pin GPIO34 (ADC6) that connects to AOUT pin of moisture sensor
+// Limits (Has to be calibrated!)
+#define DRY_VALUE 3000  // Dry soil
+#define WET_VALUE 1500  // Wet soil
+#define MIN_SOIL_MOISTURE 20 // Below this water
+#define MAX_SOIL_MOISTURE 70 // Above this stop watering
 
-#define MIN_TEMPERATURE 24 // Below this swith on heating
-#define MAX_TEMPERATURE 26 // Above this swith on cooling
+//Definitions for control pins (temporary diodes)
+#define HEATER_RED_LED 18     // GPIO for red diode
+#define COOLER_BLUE_LED 19    // GPIO for blue diode
+#define VENTILATION_GREEN_LED 23  //GPIO for green diode
+#define PUMP_YELLOW_LED 15 //GPIO for yellow diode
+#define LIGHT_WHITE_LED 2  //GPIO for white diode
+
+//Definitions for temperature/humidity control
+#define MIN_TEMPERATURE 24 // Below this switch on heating
+#define MAX_TEMPERATURE 26 // Above this switch on cooling
 #define MAX_HUMIDITY 70 // Above this start ventilation
 
-#define ON_HOUR 14       // Час за включване на диода
-#define ON_MINUTE 11     // Минута за включване на диода
-#define OFF_HOUR 14       // Час за изключване на диода
-#define OFF_MINUTE 12    // Минута за изключване на диода
+//Definitions for light control
+#define ON_HOUR 14       // Hour for light on
+#define ON_MINUTE 11     // Minute for light on
+#define OFF_HOUR 14       // Hour for light off
+#define OFF_MINUTE 12    // Minute for light off
 
-
-#define AIR_TEMP_HUMIDITY_PIN 4     // Digital pin connected to the DHT sensor
-// Feather HUZZAH ESP8266 note: use pins 3, 4, 5, 12, 13 or 14 --
-// Pin 15 can work but DHT must be disconnected during program upload.
-
+// Digital pin connected to the DHT sensor
+#define AIR_TEMP_HUMIDITY_PIN 4     
 // Uncomment whatever type you're using!
 //#define DHTTYPE DHT11   // DHT 11
 #define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 //#define DHTTYPE DHT21   // DHT 21 (AM2301)
-
 // Connect pin 1 (on the left) of the sensor to +5V
 // NOTE: If using a board with 3.3V logic like an Arduino Due connect pin 1
 // to 3.3V instead of 5V!
@@ -65,11 +53,12 @@ RTC_DS3231 rtc;
 // as the current DHT reading algorithm adjusts itself to work on faster procs.
 DHT dht(AIR_TEMP_HUMIDITY_PIN, DHTTYPE);
 
+RTC_DS3231 rtc;
+
 void setup() {
   Serial.begin(115200);
-  Serial.println(F("DHT22 test!"));
-  Serial.println(F("HW-390 test!"));
-
+  Serial.println(F("Start!"));
+  
   dht.begin();
 
   pinMode(HEATER_RED_LED, OUTPUT);
@@ -112,10 +101,10 @@ void loop() {
   // Read the analog value from soil moisture sensor
   int soilSensorValue = analogRead(SOIL_SENSOR_PIN);
 
-  // Преобразуване в процент влажност
+  // Conversion to soil moisture percent from sensor readings
   float soilMoisture = 100.0 * (DRY_VALUE - soilSensorValue) / (DRY_VALUE - WET_VALUE);
     
-  // Ограничаване в границите 0 - 100%
+  // Limiting to 0 - 100%
   soilMoisture = constrain(soilMoisture, 0, 100);
 
 
