@@ -1,4 +1,20 @@
+//Libraries for BLE
+#include <BLEDevice.h>
+#include <BLEServer.h>
+
 // Library for working with DS3231 RTC(Real Time Clock)
+//DS3231 works with I2C protocol
+//ESP32 standard I2C pins:
+//
+//    SDA (data) → GPIO21
+//
+//    SCL (clock) → GPIO22
+//
+//    VCC (power) → 3.3V or 5V (ESP32 suports both)
+//
+//    GND (ground) → GND
+
+
 #include <Wire.h>
 #include <RTClib.h>
 
@@ -9,7 +25,7 @@
 #include <DHT.h>
 
 //Definitions for working with soil moisture sensor
-#define SOIL_SENSOR_PIN 34 // ESP32 pin GPIO34 (ADC6) that connects to AOUT pin of moisture sensor
+#define SOIL_SENSOR_PIN 33 // ESP32 pin GPIO34 (ADC6) that connects to AOUT pin of moisture sensor
 // Limits (Has to be calibrated!)
 #define DRY_VALUE 3000  // Dry soil
 #define WET_VALUE 1500  // Wet soil
@@ -20,8 +36,8 @@
 #define HEATER_RED_LED 18     // GPIO for red diode
 #define COOLER_BLUE_LED 19    // GPIO for blue diode
 #define VENTILATION_GREEN_LED 23  //GPIO for green diode
-#define PUMP_YELLOW_LED 15 //GPIO for yellow diode
-#define LIGHT_WHITE_LED 2  //GPIO for white diode
+#define PUMP_YELLOW_LED 13 //GPIO for yellow diode
+#define LIGHT_WHITE_LED 14 //GPIO for white diode
 
 //Definitions for temperature/humidity control
 #define MIN_TEMPERATURE 24 // Below this switch on heating
@@ -47,6 +63,10 @@
 // Connect pin 4 (on the right) of the sensor to GROUND
 // Connect a 10K resistor from pin 2 (data) to pin 1 (power) of the sensor
 
+//BLE definitions
+#define BUTTON_PIN 32  // Button pin for the ON BLE button. Must be touched to GND to work.
+#define LED_PIN 2 // Internal LED on GPIO 2
+
 // Initialize DHT sensor.
 // Note that older versions of this library took an optional third parameter to
 // tweak the timings for faster processors.  This parameter is no longer needed
@@ -55,17 +75,43 @@ DHT dht(AIR_TEMP_HUMIDITY_PIN, DHTTYPE);
 
 RTC_DS3231 rtc;
 
+//Variables for BLE use
+bool bleActive = false;
+bool deviceConnected = false;
+BLEServer* pServer = NULL;
+unsigned long lastActiveTime = 0;  // Global variable to track last BLE activity time
+
+// Callback class to track BLE connection status
+class MyServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+        deviceConnected = true;
+        Serial.println("# # # BLE: BLE Device Connected");
+    }
+
+    void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+        Serial.println("# # # BLE: BLE Device Disconnected");
+        pServer->startAdvertising(); // Restart advertising
+    }
+};
+
 void setup() {
   Serial.begin(115200);
   Serial.println(F("Start!"));
   
   dht.begin();
 
+  //set the control pins
   pinMode(HEATER_RED_LED, OUTPUT);
   pinMode(COOLER_BLUE_LED, OUTPUT);
   pinMode(VENTILATION_GREEN_LED, OUTPUT);
   pinMode(PUMP_YELLOW_LED, OUTPUT);
   pinMode(LIGHT_WHITE_LED, OUTPUT);
+
+  //set the indicator LED pin and button pin
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW); // Start with LED OFF
 
   digitalWrite(HEATER_RED_LED, LOW);
   digitalWrite(COOLER_BLUE_LED, LOW);
@@ -79,17 +125,46 @@ void setup() {
   Wire.begin(21, 22); // Инициализиране на I2C със SDA = GPIO21, SCL = GPIO22
 
   if (!rtc.begin()) {
-      Serial.println("Не е намерен RTC модул!");
+      Serial.println("# # # RTC: Не е намерен RTC модул!");
       while (1);
   }
 
   if (rtc.lostPower()) {
-      Serial.println("Захранването на RTC е загубено, настройване на време!");
+      Serial.println("# # # RTC: Захранването на RTC е загубено, настройване на време!");
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // Автоматично задаване на текущото време от компютъра
   }
 }
 
 void loop() {
+
+  // Switch on / off BLE
+   if (digitalRead(BUTTON_PIN) == LOW && !bleActive) {
+        Serial.println();
+        Serial.println("# # # BLE: Button pressed! Starting BLE...");
+        Serial.println();
+        startBLE();
+    }
+
+    if (bleActive) {
+        if (deviceConnected) {
+            digitalWrite(LED_PIN, HIGH); // LED ON when connected
+        } else {
+            // Blink LED when waiting for a connection
+            digitalWrite(LED_PIN, LOW);
+            delay(500);
+            digitalWrite(LED_PIN, HIGH);
+            delay(500);
+        }
+
+        // Stop BLE after 30 seconds of no connection
+        if (!deviceConnected && millis() - lastActiveTime > 30000) {
+            Serial.println();
+            Serial.println("# # # BLE: No connection, stopping BLE...");
+            Serial.println();
+            stopBLE();
+        }
+    }
+
   // Wait a few seconds between measurements.
   delay(2000);
 
@@ -110,51 +185,63 @@ void loop() {
 
   // Check if any reads failed and exit early (to try again).
   if (isnan(humidity) || isnan(temperature)) {
-    Serial.println(F("Failed to read from DHT sensor!"));
+    Serial.println(F("# # # DHT sensor: Failed to read from DHT sensor!"));
     return;
   }
 
   // Compute heat index in Celsius (isFahreheit = false)
   float hic = dht.computeHeatIndex(temperature, humidity, false);
 
-  Serial.print(F("Humidity: "));
-  Serial.print(humidity);
-  Serial.print(F("%  Temperature: "));
+  Serial.println();
+  Serial.print(F("# # # DHT sensor: Temperature: "));
   Serial.print(temperature);
-  Serial.print(F("°C  Moisture value: "));
-  Serial.println(soilMoisture);
-  Serial.print(F("%  Heat index: "));
+  Serial.println(F("°C"));
+
+  Serial.print(F("# # # DHT sensor: Humidity: "));
+  Serial.print(humidity);
+  Serial.println(F("%"));
+
+  Serial.print(F("# # # DHT sensor: Heat index: "));
   Serial.print(hic);
-  Serial.print(F("°C "));
-  Serial.print(soilSensorValue);
+  Serial.println(F("°C "));
+
+  Serial.print(F("# # # Soil sensor: Soil moisture value: "));
+  Serial.print(soilMoisture);
+  Serial.print(F("%  "));
+
+  Serial.print(F("raw value: "));
+  Serial.println(soilSensorValue);
 
   DateTime now = rtc.now();
 
   int currentHour = now.hour();
   int currentMinute = now.minute();
   
-  Serial.print("Дата: ");
+  Serial.print("# # # RTC: Дата: ");
   Serial.print(now.day());
   Serial.print(".");
   Serial.print(now.month());
   Serial.print(".");
   Serial.print(now.year());
   Serial.print(" ");
+
+  Serial.print("Час: ");
   Serial.print(currentHour);
   Serial.print(":");
   Serial.print(currentMinute);
   Serial.print(":");
-  Serial.println(now.second());
+  Serial.print(now.second());
+  Serial.println();
 
   bool isTimeToTurnOn = (currentHour > ON_HOUR) || (currentHour == ON_HOUR && currentMinute >= ON_MINUTE);
   bool isTimeToTurnOff = (currentHour > OFF_HOUR) || (currentHour == OFF_HOUR && currentMinute >= OFF_MINUTE);
 
   if (isTimeToTurnOn && !isTimeToTurnOff) {
       digitalWrite(LIGHT_WHITE_LED, HIGH);  // Включва диода
-      Serial.println("Диодът е включен.");
+      Serial.println("# # # RTC: Диодът е включен.");
   } else {
       digitalWrite(LIGHT_WHITE_LED, LOW);   // Изключва диода
-      Serial.println("Диодът е изключен.");
+      Serial.println("# # # RTC: Диодът е изключен.");
   }
   
   if (temperature < MIN_TEMPERATURE) {
@@ -184,3 +271,45 @@ void loop() {
       digitalWrite(PUMP_YELLOW_LED, LOW);
   }
 }
+
+void startBLE() {
+    if (bleActive) return; // Prevent restarting if already active
+
+    BLEDevice::init("# # # BLE: ESP32_BLE_Device");
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    BLEService* pService = pServer->createService(BLEUUID((uint16_t)0x180F));
+
+    BLECharacteristic* pCharacteristic = pService->createCharacteristic(
+        BLEUUID((uint16_t)0x2A19), 
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+
+    pCharacteristic->setValue("# # # BLE: Hello from ESP32!");
+    pService->start();
+    
+    BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->start();
+
+    // Reset the BLE timeout timer
+    lastActiveTime = millis();
+
+    bleActive = true;
+    Serial.println();
+    Serial.println("# # # BLE: BLE started.");
+    Serial.println();
+}
+
+void stopBLE() {
+    if (pServer) {
+        pServer->getAdvertising()->stop();
+        pServer = nullptr; // Reset pointer
+    }
+    
+    bleActive = false;
+    deviceConnected = false;
+    digitalWrite(LED_PIN, LOW); // Turn LED OFF when BLE stops
+    Serial.println("# # # BLE: BLE stopped.");
+}
+
