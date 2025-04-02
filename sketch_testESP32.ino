@@ -80,6 +80,10 @@ bool bleActive = false;
 bool deviceConnected = false;
 BLEServer* pServer = NULL;
 unsigned long lastActiveTime = 0;  // Global variable to track last BLE activity time
+//BLE characteristics for temperature and soil moisture to be transmitted
+BLECharacteristic* tempCharacteristic;
+BLECharacteristic* soilMoistureCharacteristic;
+
 
 // Callback class to track BLE connection status
 class MyServerCallbacks : public BLEServerCallbacks {
@@ -192,6 +196,23 @@ void loop() {
   // Compute heat index in Celsius (isFahreheit = false)
   float hic = dht.computeHeatIndex(temperature, humidity, false);
 
+  //Send temperature and soil moisture over BLE
+    if (deviceConnected) {
+      // Convert temperature and soil moisture to string
+      char tempStr[8];
+      dtostrf(temperature, 4, 2, tempStr);
+      tempCharacteristic->setValue(tempStr);
+      tempCharacteristic->notify();
+
+      char soilStr[8];
+      dtostrf(soilMoisture, 4, 2, soilStr);
+      soilMoistureCharacteristic->setValue(soilStr);
+      soilMoistureCharacteristic->notify();
+
+      Serial.println("# # # BLE: Temperature and soil moisture sent over BLE.");
+  }
+
+  //Print all
   Serial.println();
   Serial.print(F("# # # DHT sensor: Temperature: "));
   Serial.print(temperature);
@@ -288,6 +309,26 @@ void startBLE() {
 
     pCharacteristic->setValue("# # # BLE: Hello from ESP32!");
     pService->start();
+
+        // Create a characteristic for temperature
+    BLECharacteristic* pTempCharacteristic = pService->createCharacteristic(
+        BLEUUID((uint16_t)0x2A6E), 
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+
+    // Create a characteristic for soil moisture
+    BLECharacteristic* pSoilMoistureCharacteristic = pService->createCharacteristic(
+        BLEUUID((uint16_t)0x2A6F), 
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+
+    // Start the service
+    pService->start();
+
+    // Store characteristics globally for later updates
+    tempCharacteristic = pTempCharacteristic;
+    soilMoistureCharacteristic = pSoilMoistureCharacteristic;
+
     
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->start();
