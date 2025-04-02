@@ -66,6 +66,11 @@
 //BLE definitions
 #define BUTTON_PIN 32  // Button pin for the ON BLE button. Must be touched to GND to work.
 #define LED_PIN 2 // Internal LED on GPIO 2
+//UUIDs
+#define SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0" 
+#define TEMP_CHARACTERISTIC_UUID  "abcdef01-1234-5678-1234-56789abcdef0"
+#define SOIL_CHARACTERISTIC_UUID  "bcdef103-2345-6789-2345-67890bcdef12"
+
 
 // Initialize DHT sensor.
 // Note that older versions of this library took an optional third parameter to
@@ -80,7 +85,7 @@ bool bleActive = false;
 bool deviceConnected = false;
 BLEServer* pServer = NULL;
 unsigned long lastActiveTime = 0;  // Global variable to track last BLE activity time
-//BLE characteristics for temperature and soil moisture to be transmitted
+//BLE characteristics variables for temperature and soil moisture to be transmitted
 BLECharacteristic* tempCharacteristic;
 BLECharacteristic* soilMoistureCharacteristic;
 
@@ -296,29 +301,21 @@ void loop() {
 void startBLE() {
     if (bleActive) return; // Prevent restarting if already active
 
-    BLEDevice::init("# # # BLE: ESP32_BLE_Device");
+    BLEDevice::init("KOREN ESP32 BLE Device");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
 
-    BLEService* pService = pServer->createService(BLEUUID((uint16_t)0x180F));
-
-    BLECharacteristic* pCharacteristic = pService->createCharacteristic(
-        BLEUUID((uint16_t)0x2A19), 
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-    );
-
-    pCharacteristic->setValue("# # # BLE: Hello from ESP32!");
-    pService->start();
+    BLEService* pService = pServer->createService(SERVICE_UUID);
 
         // Create a characteristic for temperature
     BLECharacteristic* pTempCharacteristic = pService->createCharacteristic(
-        BLEUUID((uint16_t)0x2A6E), 
+        TEMP_CHARACTERISTIC_UUID, 
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
 
     // Create a characteristic for soil moisture
     BLECharacteristic* pSoilMoistureCharacteristic = pService->createCharacteristic(
-        BLEUUID((uint16_t)0x2A6F), 
+        SOIL_CHARACTERISTIC_UUID, 
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
 
