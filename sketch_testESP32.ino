@@ -1,6 +1,7 @@
 //Libraries for BLE
 #include <BLEDevice.h>
 #include <BLEServer.h>
+#include <BLEUtils.h>
 
 // Library for working with DS3231 RTC(Real Time Clock)
 //DS3231 works with I2C protocol
@@ -45,10 +46,10 @@
 #define MAX_HUMIDITY 70 // Above this start ventilation
 
 //Definitions for light control
-#define ON_HOUR 14       // Hour for light on
-#define ON_MINUTE 11     // Minute for light on
-#define OFF_HOUR 14       // Hour for light off
-#define OFF_MINUTE 12    // Minute for light off
+#define ON_HOUR 17       // Hour for light on
+#define ON_MINUTE 0     // Minute for light on
+#define OFF_HOUR 17       // Hour for light off
+#define OFF_MINUTE 15    // Minute for light off
 
 // Digital pin connected to the DHT sensor
 #define AIR_TEMP_HUMIDITY_PIN 4     
@@ -87,7 +88,7 @@ BLEServer* pServer = NULL;
 unsigned long lastActiveTime = 0;  // Global variable to track last BLE activity time
 //BLE characteristics variables for temperature and soil moisture to be transmitted
 BLECharacteristic* tempCharacteristic;
-BLECharacteristic* soilMoistureCharacteristic;
+BLECharacteristic* humidityCharacteristic;
 
 
 // Callback class to track BLE connection status
@@ -122,11 +123,11 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW); // Start with LED OFF
 
-  digitalWrite(HEATER_RED_LED, LOW);
-  digitalWrite(COOLER_BLUE_LED, LOW);
-  digitalWrite(VENTILATION_GREEN_LED, LOW);
-  digitalWrite(PUMP_YELLOW_LED, LOW);
-  digitalWrite(LIGHT_WHITE_LED, LOW);
+  digitalWrite(HEATER_RED_LED, HIGH);
+  digitalWrite(COOLER_BLUE_LED, HIGH);
+  digitalWrite(VENTILATION_GREEN_LED, HIGH);
+  digitalWrite(PUMP_YELLOW_LED, HIGH);
+  digitalWrite(LIGHT_WHITE_LED, HIGH);
 
   // set the ADC attenuation to 11 dB (up to ~3.3V input)
   analogSetAttenuation(ADC_11db);
@@ -183,13 +184,13 @@ void loop() {
   // Read temperature as Celsius (the default)
   float temperature = dht.readTemperature();
   // Read the analog value from soil moisture sensor
-  int soilSensorValue = analogRead(SOIL_SENSOR_PIN);
+  //int soilSensorValue = analogRead(SOIL_SENSOR_PIN);
 
   // Conversion to soil moisture percent from sensor readings
-  float soilMoisture = 100.0 * (DRY_VALUE - soilSensorValue) / (DRY_VALUE - WET_VALUE);
+  //float soilMoisture = 100.0 * (DRY_VALUE - soilSensorValue) / (DRY_VALUE - WET_VALUE);
     
   // Limiting to 0 - 100%
-  soilMoisture = constrain(soilMoisture, 0, 100);
+  //soilMoisture = constrain(soilMoisture, 0, 100);
 
 
   // Check if any reads failed and exit early (to try again).
@@ -201,18 +202,18 @@ void loop() {
   // Compute heat index in Celsius (isFahreheit = false)
   float hic = dht.computeHeatIndex(temperature, humidity, false);
 
-  //Send temperature and soil moisture over BLE
+  //Send temperature and humidity over BLE
     if (deviceConnected) {
-      // Convert temperature and soil moisture to string
+      // Convert temperature and humidity to string
       char tempStr[8];
       dtostrf(temperature, 4, 2, tempStr);
       tempCharacteristic->setValue(tempStr);
       tempCharacteristic->notify();
 
-      char soilStr[8];
-      dtostrf(soilMoisture, 4, 2, soilStr);
-      soilMoistureCharacteristic->setValue(soilStr);
-      soilMoistureCharacteristic->notify();
+      char humidityStr[8];
+      dtostrf(humidity, 4, 2, humidityStr);
+      humidityCharacteristic->setValue(humidityStr);
+      humidityCharacteristic->notify();
 
       Serial.println("# # # BLE: Temperature and soil moisture sent over BLE.");
   }
@@ -231,12 +232,12 @@ void loop() {
   Serial.print(hic);
   Serial.println(F("°C "));
 
-  Serial.print(F("# # # Soil sensor: Soil moisture value: "));
-  Serial.print(soilMoisture);
-  Serial.print(F("%  "));
+//   Serial.print(F("# # # Soil sensor: Soil moisture value: "));
+//   Serial.print(soilMoisture);
+//   Serial.print(F("%  "));
 
-  Serial.print(F("raw value: "));
-  Serial.println(soilSensorValue);
+//   Serial.print(F("raw value: "));
+//   Serial.println(soilSensorValue);
 
   DateTime now = rtc.now();
 
@@ -263,39 +264,39 @@ void loop() {
   bool isTimeToTurnOff = (currentHour > OFF_HOUR) || (currentHour == OFF_HOUR && currentMinute >= OFF_MINUTE);
 
   if (isTimeToTurnOn && !isTimeToTurnOff) {
-      digitalWrite(LIGHT_WHITE_LED, HIGH);  // Включва диода
+      digitalWrite(LIGHT_WHITE_LED, LOW);  // Включва диода
       Serial.println("# # # RTC: Диодът е включен.");
   } else {
-      digitalWrite(LIGHT_WHITE_LED, LOW);   // Изключва диода
+      digitalWrite(LIGHT_WHITE_LED, HIGH);   // Изключва диода
       Serial.println("# # # RTC: Диодът е изключен.");
   }
   
   if (temperature < MIN_TEMPERATURE) {
-      digitalWrite(HEATER_RED_LED, HIGH);
-      digitalWrite(COOLER_BLUE_LED, LOW);
-  } 
-  else if (temperature > MAX_TEMPERATURE) {
       digitalWrite(HEATER_RED_LED, LOW);
       digitalWrite(COOLER_BLUE_LED, HIGH);
   } 
-  else {
-      digitalWrite(HEATER_RED_LED, LOW);
+  else if (temperature > MAX_TEMPERATURE) {
+      digitalWrite(HEATER_RED_LED, HIGH);
       digitalWrite(COOLER_BLUE_LED, LOW);
+  } 
+  else {
+      digitalWrite(HEATER_RED_LED, HIGH);
+      digitalWrite(COOLER_BLUE_LED, HIGH);
   }
 
   if(humidity > MAX_HUMIDITY) {
-      digitalWrite(VENTILATION_GREEN_LED, HIGH);
-  }
-  else {
       digitalWrite(VENTILATION_GREEN_LED, LOW);
   }
+  else {
+      digitalWrite(VENTILATION_GREEN_LED, HIGH);
+  }
 
-  if(soilMoisture < MIN_SOIL_MOISTURE) {
-      digitalWrite(PUMP_YELLOW_LED, HIGH);
-  }
-  else if(soilMoisture > MAX_SOIL_MOISTURE) {
-      digitalWrite(PUMP_YELLOW_LED, LOW);
-  }
+//   if(soilMoisture < MIN_SOIL_MOISTURE) {
+//       digitalWrite(PUMP_YELLOW_LED, LOW);
+//   }
+//   else if(soilMoisture > MAX_SOIL_MOISTURE) {
+//       digitalWrite(PUMP_YELLOW_LED, HIGH);
+//   }
 }
 
 void startBLE() {
@@ -313,22 +314,33 @@ void startBLE() {
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
 
+    Serial.print("Temperature Characteristic UUID: ");
+    Serial.println(pTempCharacteristic->getUUID().toString().c_str()); // Display the UUID
+
     // Create a characteristic for soil moisture
-    BLECharacteristic* pSoilMoistureCharacteristic = pService->createCharacteristic(
+    BLECharacteristic* pHumidityCharacteristic = pService->createCharacteristic(
         SOIL_CHARACTERISTIC_UUID, 
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
+
+    Serial.print("Humidity Characteristic UUID: ");
+    Serial.println(pHumidityCharacteristic->getUUID().toString().c_str()); // Display the UUID
 
     // Start the service
     pService->start();
 
     // Store characteristics globally for later updates
     tempCharacteristic = pTempCharacteristic;
-    soilMoistureCharacteristic = pSoilMoistureCharacteristic;
-
-    
+    humidityCharacteristic = pHumidityCharacteristic;
+ 
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->start();
+    pAdvertising->addServiceUUID(SERVICE_UUID); 
+    pAdvertising->setScanResponse(true); 
+    pAdvertising->setMinPreferred(0x06); //functions that help with iPhone connections issue
+    pAdvertising->setMinPreferred(0x12);
+    //pAdvertising->start();
+    BLEDevice::startAdvertising();
+
 
     // Reset the BLE timeout timer
     lastActiveTime = millis();
@@ -345,6 +357,8 @@ void stopBLE() {
         pServer = nullptr; // Reset pointer
     }
     
+    BLEDevice::deinit(true);  // <-- Това ще изчисти всички предишни BLE ресурси
+    delay(100);
     bleActive = false;
     deviceConnected = false;
     digitalWrite(LED_PIN, LOW); // Turn LED OFF when BLE stops
